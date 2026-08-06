@@ -1,13 +1,13 @@
-Reimplements the repo https://github.com/andrewj-t/wincamcfg as a .ps1 script. Created by proompting CoPilot a few times.
+> [!NOTE]
+> Reimplements the repo https://github.com/andrewj-t/wincamcfg as a .ps1 script. Created by proompting CoPilot a few times.
+> copied from original repo with edits for ps1 and removing binary compilation steps.
 
-_Note: README.md copied from original repo with edits for ps1 and removing binary compilation steps._
-
-# WARNING:
-Script not tested for any usage other than setting PowerlineFrequency, no guarantees are provided about its support for other features. No warranties for any usage, this was created entirely by Copilot. Use at your own risk!!!
+> [!CAUTION]
+> Script not tested for any usage other than setting PowerlineFrequency, no guarantees are provided about its support for other features. No warranties for any usage, this was created entirely by Copilot. Use at your own risk!!!
 
 # wincamcfg.ps1
 
-> A command-line utility for managing webcam configuration on Windows
+> A command-line script for managing webcam configuration on Windows
 
 ## The problem
 
@@ -159,14 +159,10 @@ Drop this into a startup script or GPO if you need every machine on a fleet to l
 
 The release binary is **not code-signed**. Code-signing certificates aren't free and this is a side project. If your organization requires signed binaries, you can sign with `signtool` using your internal CA's certificate.
 
-## Troubleshooting
-
-Having issues? Check out the [Troubleshooting Guide](TROUBLESHOOTING.md) for debug logging instructions and common solutions.
-
 ## License
 
 MIT. See [LICENSE](LICENSE).
 
 ## Contributing
 
-Bug reports and PRs welcome. For bugs, please include a reproduction case: camera model, the exact command you ran, and a trace log if you can get one. [TROUBLESHOOTING.md](TROUBLESHOOTING.md) covers how to capture the log.
+Bug reports and PRs welcome.
