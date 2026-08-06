@@ -1,4 +1,3 @@
-# wincamcfg.ps1
 Reimplements the repo https://github.com/andrewj-t/wincamcfg as a .ps1 script. Created by proompting CoPilot a few times.
 
 Below copied from original repo here, with edits for ps1 and removing binary compilation steps: https://github.com/andrewj-t/wincamcfg
