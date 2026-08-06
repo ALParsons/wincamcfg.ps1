@@ -1,6 +1,6 @@
 Reimplements the repo https://github.com/andrewj-t/wincamcfg as a .ps1 script. Created by proompting CoPilot a few times.
 
-Below copied from original repo here, with edits for ps1 and removing binary compilation steps: https://github.com/andrewj-t/wincamcfg
+_Note: README.md copied from original repo with edits for ps1 and removing binary compilation steps._
 
 # WARNING:
 Script not tested for any usage other than setting PowerlineFrequency, no guarantees are provided about its support for other features. No warranties for any usage, this was created entirely by Copilot. Use at your own risk!!!
