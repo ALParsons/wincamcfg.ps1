@@ -176,6 +176,31 @@ namespace WinCamCfg.PowerShell
             if (hr < 0) Marshal.ThrowExceptionForHR(hr, new IntPtr(-1));
         }
 
+        public static int SetDefault(int cameraIndex, string propertyName)
+        {
+            CameraHandle camera = Select(Enumerate(), cameraIndex);
+            Descriptor property = Find(propertyName);
+            int min, max, step, defaultValue, caps, hr;
+            if (property.CameraControl)
+            {
+                IAMCameraControl control = camera.Filter as IAMCameraControl;
+                if (control == null) throw new InvalidOperationException("The camera does not expose IAMCameraControl.");
+                hr = control.GetRange(property.Id, out min, out max, out step, out defaultValue, out caps);
+                if (hr < 0) Marshal.ThrowExceptionForHR(hr, new IntPtr(-1));
+                hr = control.Set(property.Id, defaultValue, FlagManual);
+            }
+            else
+            {
+                IAMVideoProcAmp control = camera.Filter as IAMVideoProcAmp;
+                if (control == null) throw new InvalidOperationException("The camera does not expose IAMVideoProcAmp.");
+                hr = control.GetRange(property.Id, out min, out max, out step, out defaultValue, out caps);
+                if (hr < 0) Marshal.ThrowExceptionForHR(hr, new IntPtr(-1));
+                hr = control.Set(property.Id, defaultValue, FlagManual);
+            }
+            if (hr < 0) Marshal.ThrowExceptionForHR(hr, new IntPtr(-1));
+            return defaultValue;
+        }
+
         private static List<CameraHandle> Enumerate()
         {
             List<CameraHandle> output = new List<CameraHandle>();
@@ -274,12 +299,13 @@ namespace WinCamCfg.PowerShell
 
         private static int ParseValue(string property, string input)
         {
+            if (String.Equals(input, "Auto", StringComparison.OrdinalIgnoreCase))
+                return property == "PowerlineFrequency" ? 3 : 0;
             if (property == "PowerlineFrequency")
             {
                 if (String.Equals(input, "Disabled", StringComparison.OrdinalIgnoreCase)) return 0;
                 if (String.Equals(input, "50Hz", StringComparison.OrdinalIgnoreCase)) return 1;
                 if (String.Equals(input, "60Hz", StringComparison.OrdinalIgnoreCase)) return 2;
-                if (String.Equals(input, "Auto", StringComparison.OrdinalIgnoreCase)) return 3;
             }
             if (property == "ColorEnable" || property == "BacklightCompensation")
             {
@@ -315,16 +341,29 @@ if (-not ('WinCamCfg.PowerShell.CameraManager' -as [type])) {
 function Get-Options {
     param([string[]]$InputArguments)
     if ($InputArguments.Count -eq 0) { return @{ Command = 'help' } }
-    $o = @{ Command = $InputArguments[0].ToLowerInvariant(); Camera = '0'; Property = $null; Value = $null; Output = 'text' }
+    $o = @{ Command = $InputArguments[0].ToLowerInvariant(); Camera = '0'; Property = $null; Value = $null; Output = 'text'; Default = $false }
     for ($i = 1; $i -lt $InputArguments.Count; $i++) {
         switch ($InputArguments[$i]) {
-            '--camera' { $i++; $o.Camera = $InputArguments[$i] }
-            '--property' { $i++; $o.Property = $InputArguments[$i] }
-            '--value' { $i++; $o.Value = $InputArguments[$i] }
-            '--output' { $i++; $o.Output = $InputArguments[$i].ToLowerInvariant() }
+            { $_ -in '--camera', '--property', '--value', '--output' } {
+                $option = $InputArguments[$i]
+                if ($i + 1 -ge $InputArguments.Count -or $InputArguments[$i + 1].StartsWith('--')) {
+                    throw "Missing value for $option."
+                }
+                $i++
+                switch ($option) {
+                    '--camera' { $o.Camera = $InputArguments[$i] }
+                    '--property' { $o.Property = $InputArguments[$i] }
+                    '--value' { $o.Value = $InputArguments[$i] }
+                    '--output' { $o.Output = $InputArguments[$i].ToLowerInvariant() }
+                }
+            }
+            '--default' { $o.Default = $true }
             default { throw "Unknown argument: $($InputArguments[$i])" }
         }
     }
+    if ($o.Output -notin @('text', 'json')) { throw "Invalid output format '$($o.Output)'; use text or json." }
+    if ($o.Default -and $o.Command -ne 'set') { throw '--default is only valid with set.' }
+    if ($o.Default -and $null -ne $o.Value) { throw 'Do not combine --default with --value.' }
     return $o
 }
 
@@ -361,31 +400,65 @@ try {
         }
         'set' {
             if (-not $o.Property) { throw 'Specify --property.' }
-            if ($null -eq $o.Value) { throw 'Specify --value.' }
-            $changed = 0; $skipped = 0
+            if (-not $o.Default -and $null -eq $o.Value) { throw 'Specify --value.' }
+            $changed = 0; $skipped = 0; $results = @()
             foreach ($index in (Get-Indexes $o.Camera)) {
-                try {
-                    [WinCamCfg.PowerShell.CameraManager]::Set($index,$o.Property,$o.Value)
-                    "Set $($o.Property) to $($o.Value) on camera $index."
-                    $changed++
-                } catch {
-                    if ($o.Camera -ine 'all') { throw }
-                    $message = if ($_.Exception.InnerException) { $_.Exception.InnerException.Message } else { $_.Exception.Message }
-                    Write-Warning "Skipped camera $index. $message"
-                    $skipped++
+                $camera = [WinCamCfg.PowerShell.CameraManager]::List() | Where-Object Index -eq $index
+                if ($o.Default -and $o.Property -ieq 'all') {
+                    $availableProperties = @([WinCamCfg.PowerShell.CameraManager]::Get($index))
+                    $propertyNames = @($availableProperties | ForEach-Object Name)
+                } else {
+                    $availableProperties = @()
+                    $propertyNames = @($o.Property)
+                }
+                foreach ($propertyName in $propertyNames) {
+                    try {
+                        if ($o.Default) {
+                            if ($o.Property -ieq 'all') {
+                                $property = $availableProperties | Where-Object Name -eq $propertyName
+                            } else {
+                                $property = [WinCamCfg.PowerShell.CameraManager]::Get($index) | Where-Object Name -eq $propertyName
+                            }
+                            if ($null -eq $property -or $null -eq $property.Default) {
+                                throw "No default value is available for $propertyName."
+                            }
+                            $value = [WinCamCfg.PowerShell.CameraManager]::SetDefault($index, $propertyName)
+                        } else {
+                            [WinCamCfg.PowerShell.CameraManager]::Set($index, $propertyName, $o.Value)
+                            $value = $o.Value
+                        }
+                        $results += [pscustomobject]@{ index=$index; name=$camera.Name; property=$propertyName; value=$value; status='changed' }
+                        $changed++
+                    } catch {
+                        if ($o.Camera -ine 'all' -and -not ($o.Default -and $o.Property -ieq 'all')) { throw }
+                        $message = if ($_.Exception.InnerException) { $_.Exception.InnerException.Message } else { $_.Exception.Message }
+                        $results += [pscustomobject]@{ index=$index; name=$camera.Name; property=$propertyName; value=$null; status='skipped'; error=$message }
+                        $skipped++
+                        if ($o.Output -ne 'json') { Write-Warning "Skipped camera $index, property $propertyName. $message" }
+                    }
                 }
             }
-            if ($o.Camera -ieq 'all') {
-                "Result: changed=$changed; skipped=$skipped"
-                if ($changed -eq 0) { throw "No camera accepted $($o.Property)." }
+            if ($o.Output -eq 'json') {
+                [pscustomobject]@{ results=@($results); changed=$changed; skipped=$skipped; success=($changed -gt 0) } |
+                    ConvertTo-Json -Depth 5
+            } else {
+                foreach ($result in $results | Where-Object status -eq 'changed') {
+                    "Set $($result.property) to $($result.value) on camera $($result.index)."
+                }
+                if ($o.Camera -ieq 'all' -or ($o.Default -and $o.Property -ieq 'all')) {
+                    "Result: changed=$changed; skipped=$skipped"
+                }
             }
+            if ($changed -eq 0) { throw "No camera accepted $($o.Property)." }
         }
         default {
+            if ($o.Command -notin @('help', '')) { throw "Unknown command: $($o.Command)" }
             @'
 Usage:
   .\wincamcfg.ps1 list [--output text|json]
   .\wincamcfg.ps1 get --camera <index|all> [--output text|json]
-  .\wincamcfg.ps1 set --camera <index|all> --property <name> --value <value>
+  .\wincamcfg.ps1 set --camera <index|all> --property <name|all> --value <value> [--output text|json]
+  .\wincamcfg.ps1 set --camera <index|all> --property <name|all> --default [--output text|json]
   .\wincamcfg.ps1 version
 '@
         }

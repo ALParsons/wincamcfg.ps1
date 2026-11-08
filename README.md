@@ -108,9 +108,9 @@ Properties like `Exposure`, `Focus`, and `WhiteBalance` can run in either Auto o
 
 The current mode is shown in square brackets by `get`, e.g. `Exposure: -5 [Manual]` or `Exposure: -6 [Auto]`. Only properties that advertise Auto support will show a mode tag.
 
-### Reset to defaults
+### Reset to driver-reported defaults
 
-Restore factory settings:
+Restore the default value reported by the camera driver for one property, or for each property the camera reports as supported:
 
 ```powershell
 # Reset a specific property to default
@@ -122,6 +122,8 @@ Restore factory settings:
 # Reset ALL cameras to factory defaults
 ./wincamcfg.ps1 set --camera all --property all --default
 ```
+
+The reported default is a DirectShow property default and may not be the same as a camera manufacturer's factory reset state. A property without an available default cannot be reset by this command.
 
 ## Available properties
 
@@ -141,7 +143,7 @@ Use `./wincamcfg.ps1 get --camera 0` to see which properties your specific camer
 
 ## Automation and scripting
 
-Use `--output json` for machine-readable output:
+Use `--output json` for machine-readable output from `list`, `get`, and `set`. The `set` response contains a `results` array and `changed`/`skipped` counts; each result identifies the camera, property, value, and status. Errors still produce a nonzero exit code.
 
 ```powershell
 # PowerShell example: Configure all cameras on startup
